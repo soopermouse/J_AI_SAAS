@@ -1,0 +1,16 @@
+services:
+  j-ai-saas:
+    build: .
+    environment:
+      J_PLATFORM_DB: /data/j_platform.sqlite3
+      J_PLATFORM_HOST: 0.0.0.0
+      J_PLATFORM_SERVER_TOKEN: ${J_PLATFORM_SERVER_TOKEN:?set J_PLATFORM_SERVER_TOKEN}
+      J_AGENT_BASE_URL: ${J_AGENT_BASE_URL:?set J_AGENT_BASE_URL}
+      J_AGENT_ADMIN_TOKEN: ${J_AGENT_ADMIN_TOKEN:?set J_AGENT_ADMIN_TOKEN}
+    ports:
+      - "8787:8787"
+    volumes:
+      - j_platform_data:/data
+
+volumes:
+  j_platform_data:
