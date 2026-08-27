@@ -78,8 +78,8 @@ def test_gateway_control_plane_contract_and_no_redirect_following():
     base = f"http://127.0.0.1:{srv.server_port}"
     g = AgentGateway(registry_for(base))
     assert g.health("default")["status"] == "ok"
-    assert g.usage("default")["lifetime"]["total_tokens"] == 42
-    assert g.devices("default")["devices"][0]["device_id"] == "d1"
+    assert g.usage("default", "default")["lifetime"]["total_tokens"] == 42
+    assert g.devices("default", "default")["devices"][0]["device_id"] == "d1"
     assert g.pair_code("default", "mind_x")["code"] == "ABCD-EF01"
     with pytest.raises(RuntimeError, match="redirect refused"):
         g._call("default", "GET", "/redirect", admin=True)
@@ -121,3 +121,46 @@ def test_local_code_keeps_loopback_default():
     from pathlib import Path
     app = (Path(__file__).resolve().parents[1] / "j_platform" / "app.py").read_text()
     assert 'os.getenv("J_PLATFORM_HOST", "127.0.0.1")' in app
+
+def test_gateway_scopes_usage_and_devices_with_mind_header():
+    from j_platform.gateway import AgentGateway, EndpointRegistry, AgentEndpoint
+    captured=[]
+    class FakeResponse:
+        status=200
+        def read(self): return b'{}'
+    class FakeConnection:
+        def request(self, method, path, body=None, headers=None): captured.append((method,path,dict(headers or {})))
+        def getresponse(self): return FakeResponse()
+        def close(self): pass
+    gateway=AgentGateway(EndpointRegistry({'e':AgentEndpoint('e','http://agent','secret')}))
+    gateway._connection=lambda endpoint, timeout=10.0: FakeConnection()
+    gateway.usage('e','acme')
+    gateway.devices('e','beta')
+    assert captured[0][2]['X-J-Mind-ID']=='acme'
+    assert captured[1][2]['X-J-Mind-ID']=='beta'
+    assert captured[0][2]['Authorization']=='Bearer secret'
+
+
+def test_gateway_can_provision_mind_with_admin_auth():
+    from j_platform.gateway import AgentGateway, EndpointRegistry, AgentEndpoint
+    captured=[]
+    class R:
+        status=200
+        def read(self): return b'{"mind_id":"mind_acme","created":true}'
+    class C:
+        def request(self, method, path, body=None, headers=None): captured.append((method,path,body,dict(headers or {})))
+        def getresponse(self): return R()
+        def close(self): pass
+    g=AgentGateway(EndpointRegistry({'e':AgentEndpoint('e','http://agent','secret')}))
+    g._connection=lambda endpoint, timeout=10.0: C()
+    out=g.provision_mind('e','mind_acme')
+    assert out['created'] is True
+    assert captured[0][0:2] == ('POST','/v1/os/minds')
+    assert captured[0][3]['Authorization']=='Bearer secret'
+    assert b'mind_acme' in captured[0][2]
+
+def test_store_provisioning_status_transition(tmp_path):
+    s=Store(str(tmp_path/'p.db'))
+    m=s.create_mind('tenant','J','default', mind_id='mind_fixed', status='provisioning')
+    assert m['status']=='provisioning'
+    assert s.set_mind_status('tenant','mind_fixed','ready')['status']=='ready'

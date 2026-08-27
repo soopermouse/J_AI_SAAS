@@ -79,7 +79,7 @@ class AgentGateway:
         cls = http.client.HTTPSConnection if parsed.scheme == "https" else http.client.HTTPConnection
         return cls(parsed.hostname, port, timeout=timeout)
 
-    def _call(self, endpoint_id: str, method: str, path: str, body=None, admin: bool = False):
+    def _call(self, endpoint_id: str, method: str, path: str, body=None, admin: bool = False, mind_id: str | None = None):
         endpoint = self.endpoints.resolve(endpoint_id)
         headers = {"Accept": "application/json"}
         payload = None
@@ -88,6 +88,8 @@ class AgentGateway:
             headers["Content-Type"] = "application/json"
         if admin:
             headers["Authorization"] = "Bearer " + endpoint.admin_token
+        if mind_id:
+            headers["X-J-Mind-ID"] = mind_id
 
         conn = self._connection(endpoint)
         try:
@@ -107,11 +109,14 @@ class AgentGateway:
     def health(self, endpoint_id: str):
         return self._call(endpoint_id, "GET", "/health")
 
+    def provision_mind(self, endpoint_id: str, mind_id: str):
+        return self._call(endpoint_id, "POST", "/v1/os/minds", {"mind_id": mind_id}, admin=True)
+
     def pair_code(self, endpoint_id: str, mind_id: str):
         return self._call(endpoint_id, "POST", f"/v1/os/pair-code/{mind_id}", admin=True)
 
-    def usage(self, endpoint_id: str):
-        return self._call(endpoint_id, "GET", "/v1/os/usage", admin=True)
+    def usage(self, endpoint_id: str, mind_id: str):
+        return self._call(endpoint_id, "GET", "/v1/os/usage", admin=True, mind_id=mind_id)
 
-    def devices(self, endpoint_id: str):
-        return self._call(endpoint_id, "GET", "/v1/os/devices", admin=True)
+    def devices(self, endpoint_id: str, mind_id: str):
+        return self._call(endpoint_id, "GET", "/v1/os/devices", admin=True, mind_id=mind_id)

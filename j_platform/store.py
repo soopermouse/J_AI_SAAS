@@ -109,16 +109,24 @@ class Store:
                 raise KeyError(tenant_id)
             return dict(row)
 
-    def create_mind(self, tenant_id: str, name: str, agent_endpoint_id: str = "default", deployment: str = "cloud"):
+    def create_mind(self, tenant_id: str, name: str, agent_endpoint_id: str = "default", deployment: str = "cloud", *, mind_id: str | None = None, status: str = "ready"):
         with self._lock:
             self.ensure_tenant(tenant_id)
-            mid = "mind_" + secrets.token_urlsafe(12)
+            mid = mind_id or ("mind_" + secrets.token_urlsafe(12))
             self.db.execute(
                 "INSERT INTO minds(id,tenant_id,name,agent_endpoint_id,status,deployment) VALUES(?,?,?,?,?,?)",
-                (mid, tenant_id, name, agent_endpoint_id, "ready", deployment),
+                (mid, tenant_id, name, agent_endpoint_id, status, deployment),
             )
             self.db.commit()
             return self.get_mind(tenant_id, mid)
+
+    def set_mind_status(self, tenant_id: str, mind_id: str, status: str):
+        with self._lock:
+            cur = self.db.execute("UPDATE minds SET status=? WHERE tenant_id=? AND id=?", (status, tenant_id, mind_id))
+            if cur.rowcount != 1:
+                raise KeyError(mind_id)
+            self.db.commit()
+            return self.get_mind(tenant_id, mind_id)
 
     def get_mind(self, tenant_id: str, mind_id: str):
         with self._lock:

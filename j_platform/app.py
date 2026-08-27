@@ -8,7 +8,7 @@ from .models import MindCreate, AppRegistration
 
 runtime = JAIPlatform()
 runtime.start()
-api = FastAPI(title="J AI SaaS Control Plane", version="1.1.2")
+api = FastAPI(title="J AI SaaS Control Plane", version="1.1.4")
 
 
 def member(x_j_platform_key: str | None = Header(default=None), x_j_tenant_id: str | None = Header(default=None)):
@@ -51,7 +51,13 @@ def create_mind(body: MindCreate, tid=Depends(member)):
         runtime.gateway.endpoints.resolve(body.agent_endpoint_id)
     except KeyError:
         raise HTTPException(400, "Unknown agent_endpoint_id")
-    return runtime.store.create_mind(tid, body.name, body.agent_endpoint_id, body.deployment)
+    mind = runtime.store.create_mind(tid, body.name, body.agent_endpoint_id, body.deployment, status="provisioning")
+    try:
+        runtime.gateway.provision_mind(body.agent_endpoint_id, mind["id"])
+    except RuntimeError as exc:
+        runtime.store.set_mind_status(tid, mind["id"], "failed")
+        raise HTTPException(502, str(exc)) from exc
+    return runtime.store.set_mind_status(tid, mind["id"], "ready")
 
 
 @api.get("/v1/platform/minds/{mind_id}/health")
@@ -76,7 +82,7 @@ def pair_code(mind_id: str, tid=Depends(member)):
 def usage(mind_id: str, tid=Depends(member)):
     mind = mind_or_404(tid, mind_id)
     try:
-        return runtime.gateway.usage(mind["agent_endpoint_id"])
+        return runtime.gateway.usage(mind["agent_endpoint_id"], mind_id)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
 
@@ -85,7 +91,7 @@ def usage(mind_id: str, tid=Depends(member)):
 def devices(mind_id: str, tid=Depends(member)):
     mind = mind_or_404(tid, mind_id)
     try:
-        return runtime.gateway.devices(mind["agent_endpoint_id"])
+        return runtime.gateway.devices(mind["agent_endpoint_id"], mind_id)
     except RuntimeError as exc:
         raise HTTPException(502, str(exc))
 
